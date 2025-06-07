@@ -41,15 +41,31 @@ export function calculatePayoffSchedule(
     }]
   };
 
+  // Calculate starting month and year (next full month after current)
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11, we need 1-12
+  const currentYear = now.getFullYear();
+  
+  let startingMonth = currentMonth + 1;
+  let startingYear = currentYear;
+  
+  // Handle year rollover
+  if (startingMonth > 12) {
+    startingMonth = 1;
+    startingYear = currentYear + 1;
+  }
+
   let currentMonthCount = 0;
-  let currentYear = new Date().getFullYear();
   let totalInterestPaidGlobal = 0;
   let paymentPool = extraMonthlyPayment;
 
   while (workingDebts.some(debt => !debt.paidOff)) {
     currentMonthCount++;
-    const monthForCalendar = (currentMonthCount - 1) % 12 + 1;
-    const yearForCalendar = currentYear + Math.floor((currentMonthCount - 1) / 12);
+    
+    // Calculate the actual calendar month and year
+    const monthsFromStart = currentMonthCount - 1;
+    const monthForCalendar = ((startingMonth - 1 + monthsFromStart) % 12) + 1;
+    const yearForCalendar = startingYear + Math.floor((startingMonth - 1 + monthsFromStart) / 12);
 
     chartData.labels.push(
       `${new Date(0, monthForCalendar - 1).toLocaleString('default', { month: 'short' })} ${yearForCalendar}`
