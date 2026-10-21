@@ -4,6 +4,9 @@ interface LumpSumInputProps {
   id: string;
   amount: number;
   month: number;
+  year: number;
+  startMonth: number;
+  startYear: number;
   currency: string;
   onUpdate: (id: string, field: string, value: number) => void;
   onRemove: (id: string) => void;
@@ -13,6 +16,9 @@ const LumpSumInput: React.FC<LumpSumInputProps> = ({
   id,
   amount,
   month,
+  year,
+  startMonth,
+  startYear,
   currency,
   onUpdate,
   onRemove
@@ -31,6 +37,9 @@ const LumpSumInput: React.FC<LumpSumInputProps> = ({
     { value: 11, name: 'November' },
     { value: 12, name: 'December' },
   ];
+
+  // Lump sums can't be dated before the plan start
+  const years = Array.from({ length: 11 }, (_, i) => startYear + i);
 
   return (
     <div className="border border-dashed border-[#bdc3c7] p-4 mb-4 bg-white rounded">
@@ -61,8 +70,23 @@ const LumpSumInput: React.FC<LumpSumInputProps> = ({
             className="w-full p-2 border border-[#ced4da] rounded"
           >
             {months.map((m) => (
-              <option key={m.value} value={m.value}>
+              <option key={m.value} value={m.value} disabled={year === startYear && m.value < startMonth}>
                 {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block font-semibold text-[#34495e] mb-2">Year:</label>
+          <select
+            value={year}
+            onChange={(e) => onUpdate(id, 'year', parseInt(e.target.value))}
+            className="w-full p-2 border border-[#ced4da] rounded"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
               </option>
             ))}
           </select>

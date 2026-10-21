@@ -8,9 +8,39 @@ import { saveToLocalStorage, loadFromLocalStorage, clearLocalStorage } from './u
 import { exportToPDF, exportToCSV } from './utils/export';
 import { Debt, LumpSum, PaymentScheduleEntry, ChartData } from './types';
 
+// Default to the currency of the user's locale, limited to the options in the selector
+function detectDefaultCurrency(): string {
+  const euroRegions = ['AT', 'BE', 'CY', 'DE', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PT', 'SI', 'SK'];
+  const byRegion: Record<string, string> = { GB: '£', JP: '¥', CA: 'C$', AU: 'A$', IN: '₹', US: '$' };
+  try {
+    const region = new Intl.Locale(navigator.language).maximize().region || '';
+    return byRegion[region] || (euroRegions.includes(region) ? '€' : '$');
+  } catch (e) {
+    return '$';
+  }
+}
+
+const defaultCurrency = detectDefaultCurrency();
+
+const newDebt = (id: string, name: string): Debt => ({
+  id,
+  name,
+  balance: 0,
+  apr: 0,
+  minPayment: 0,
+  repayMode: 'pct',
+  repayPct: 0,
+  repayFloor: 100,
+  term: 0,
+  monthlyInterestRate: 0,
+  paidOff: false
+});
+
 function App() {
   // State variables
-  const [selectedCurrency, setSelectedCurrency] = useState('$');
+  const [selectedCurrency, setSelectedCurrency] = useState(defaultCurrency);
+  const [planStartMonth, setPlanStartMonth] = useState(new Date().getMonth() + 1);
+  const [planStartYear, setPlanStartYear] = useState(new Date().getFullYear());
   const [payoffStrategy, setPayoffStrategy] = useState('snowball');
   const [numCreditCards, setNumCreditCards] = useState(1);
   const [debts, setDebts] = useState<Debt[]>([]);
@@ -54,6 +84,13 @@ function App() {
     { value: 12, name: 'December' },
   ];
 
+  // Years offered for the plan start, always including the selected one
+  const thisYear = new Date().getFullYear();
+  const planStartYears = Array.from(new Set([
+    ...Array.from({ length: 8 }, (_, i) => thisYear - 5 + i),
+    planStartYear
+  ])).sort((a, b) => a - b);
+
   // Initialize credit card debts when number changes
   useEffect(() => {
     const newDebts: Debt[] = [];
@@ -62,15 +99,7 @@ function App() {
       if (existingDebt) {
         newDebts.push(existingDebt);
       } else {
-        newDebts.push({
-          id: `card-${i}`,
-          name: `Credit Card ${i}`,
-          balance: 0,
-          apr: 0,
-          minPayment: 0,
-          monthlyInterestRate: 0,
-          paidOff: false
-        });
+        newDebts.push(newDebt(`card-${i}`, `Credit Card ${i}`));
       }
     }
     
@@ -150,17 +179,7 @@ function App() {
       .filter(d => d.id.startsWith('unsecured-'))
       .map(d => parseInt(d.id.split('-')[1]) || 0)) + 1;
     
-    const newDebt: Debt = {
-      id: `unsecured-${nextId}`,
-      name: `Unsecured Debt ${nextId}`,
-      balance: 0,
-      apr: 0,
-      minPayment: 0,
-      monthlyInterestRate: 0,
-      paidOff: false
-    };
-    
-    setDebts(prev => [...prev, newDebt]);
+    setDebts(prev => [...prev, newDebt(`unsecured-${nextId}`, `Loan ${nextId}`)]);
   };
 
   const updateLumpSum = (id: string, field: string, value: number) => {
@@ -178,18 +197,18 @@ function App() {
     const newLumpSum: LumpSum = {
       id: `lump-${nextId}`,
       amount: 0,
-      month: 1
+      month: planStartMonth,
+      year: planStartYear
     };
     setLumpSums(prev => [...prev, newLumpSum]);
   };
 
   const calculatePayoff = () => {
-    const validDebts = debts.filter(debt => 
-      debt.name.trim() && debt.balance > 0 && debt.apr >= 0 && debt.minPayment >= 0
-    ).map(debt => ({
-      ...debt,
-      monthlyInterestRate: debt.apr / 12 / 100
-    }));
+    const validDebts = debts.filter(debt => {
+      if (!debt.name.trim() || debt.balance <= 0 || debt.apr < 0) return false;
+      if (debt.id.startsWith('unsecured-')) return debt.minPayment > 0;
+      return debt.repayMode === 'pct' ? debt.repayPct > 0 : debt.minPayment >= 0;
+    });
 
     if (validDebts.length === 0) {
       alert('Please add at least one debt with a positive balance.');
@@ -197,7 +216,13 @@ function App() {
       return;
     }
 
+    const startIndex = planStartYear * 12 + planStartMonth;
     const validLumpSums = lumpSums.filter(lump => lump.amount > 0 && lump.month >= 1 && lump.month <= 12);
+    if (validLumpSums.some(lump => lump.year * 12 + lump.month < startIndex)) {
+      alert('A lump sum is dated before the plan start. Move it to the plan start or later.');
+      setShowResults(false);
+      return;
+    }
 
     const result = calculatePayoffSchedule(
       validDebts,
@@ -205,7 +230,9 @@ function App() {
       extraMonthlyPayment,
       annualBonusAmount,
       annualBonusMonth,
-      validLumpSums
+      validLumpSums,
+      planStartMonth,
+      planStartYear
     );
 
     const years = Math.floor(result.totalMonths / 12);
@@ -224,6 +251,8 @@ function App() {
       const dataToSave = {
         selectedCurrency,
         payoffStrategy,
+        planStartMonth,
+        planStartYear,
         numCreditCards,
         debts,
         lumpSums,
@@ -246,11 +275,21 @@ function App() {
         return;
       }
 
-      setSelectedCurrency(savedData.selectedCurrency || '$');
+      setSelectedCurrency(savedData.selectedCurrency || defaultCurrency);
+      // Plans saved before the start date existed fall back to the current month
+      const loadedYear = savedData.planStartYear || new Date().getFullYear();
+      setPlanStartMonth(savedData.planStartMonth || new Date().getMonth() + 1);
+      setPlanStartYear(loadedYear);
       setPayoffStrategy(savedData.payoffStrategy || 'snowball');
       setNumCreditCards(savedData.numCreditCards || 1);
-      setDebts(savedData.debts || []);
-      setLumpSums(savedData.lumpSums || []);
+      // Debts saved before percentage repayments and loan terms only had a fixed payment
+      setDebts((savedData.debts || []).map(debt => ({
+        ...newDebt(debt.id, debt.name),
+        ...debt,
+        repayMode: debt.repayMode || 'fixed',
+        repayFloor: debt.repayFloor ?? 100
+      })));
+      setLumpSums((savedData.lumpSums || []).map(lump => ({ ...lump, year: lump.year || loadedYear })));
       setExtraMonthlyPayment(savedData.extraMonthlyPayment || 0);
       setAnnualBonusAmount(savedData.annualBonusAmount || 0);
       setAnnualBonusMonth(savedData.annualBonusMonth || 0);
@@ -265,7 +304,9 @@ function App() {
   const resetAll = () => {
     if (!confirm('Are you sure you want to reset all inputs and clear results?')) return;
     
-    setSelectedCurrency('$');
+    setSelectedCurrency(defaultCurrency);
+    setPlanStartMonth(new Date().getMonth() + 1);
+    setPlanStartYear(new Date().getFullYear());
     setPayoffStrategy('snowball');
     setNumCreditCards(1);
     setDebts([]);
@@ -325,6 +366,37 @@ function App() {
               ))}
             </select>
           </div>
+          <div className="mb-4">
+            <label htmlFor="planStartMonth" className="block font-semibold text-[#34495e] mb-2">
+              Plan Start:
+            </label>
+            <div className="flex gap-2">
+              <select
+                id="planStartMonth"
+                value={planStartMonth}
+                onChange={(e) => setPlanStartMonth(parseInt(e.target.value))}
+                className="min-w-[140px] p-2 border border-[#ced4da] rounded"
+              >
+                {months.filter(m => m.value > 0).map((month) => (
+                  <option key={month.value} value={month.value}>
+                    {month.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                id="planStartYear"
+                value={planStartYear}
+                onChange={(e) => setPlanStartYear(parseInt(e.target.value))}
+                className="min-w-[100px] p-2 border border-[#ced4da] rounded"
+              >
+                {planStartYears.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* Payoff Strategy Section */}
@@ -376,6 +448,10 @@ function App() {
                 balance={debt.balance}
                 apr={debt.apr}
                 minPayment={debt.minPayment}
+                repayMode={debt.repayMode}
+                repayPct={debt.repayPct}
+                repayFloor={debt.repayFloor}
+                term={debt.term}
                 currency={selectedCurrency}
                 onUpdate={updateDebt}
                 isRemovable={false}
@@ -386,7 +462,7 @@ function App() {
 
         {/* Unsecured Debts */}
         <div className="mb-6 p-5 border border-[#b0bec5] rounded-lg bg-[#f8f9fa]">
-          <h2 className="text-xl font-semibold text-[#2c3e50] mb-4">Other Unsecured Debts</h2>
+          <h2 className="text-xl font-semibold text-[#2c3e50] mb-4">Loans</h2>
           {debts.filter(d => d.id.startsWith('unsecured-')).map(debt => (
             <DebtInput
               key={debt.id}
@@ -395,6 +471,10 @@ function App() {
               balance={debt.balance}
               apr={debt.apr}
               minPayment={debt.minPayment}
+              repayMode={debt.repayMode}
+              repayPct={debt.repayPct}
+              repayFloor={debt.repayFloor}
+              term={debt.term}
               currency={selectedCurrency}
               onUpdate={updateDebt}
               onRemove={removeDebt}
@@ -405,7 +485,7 @@ function App() {
             onClick={addUnsecuredDebt}
             className="px-4 py-2 bg-[#3498db] hover:bg-[#2980b9] text-white rounded transition-colors"
           >
-            Add Unsecured Debt
+            Add Loan
           </button>
         </div>
 
@@ -471,6 +551,9 @@ function App() {
               id={lump.id}
               amount={lump.amount}
               month={lump.month}
+              year={lump.year}
+              startMonth={planStartMonth}
+              startYear={planStartYear}
               currency={selectedCurrency}
               onUpdate={updateLumpSum}
               onRemove={removeLumpSum}
