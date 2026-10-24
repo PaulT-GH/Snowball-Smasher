@@ -3,6 +3,8 @@ import Chart from 'chart.js/auto';
 import DebtInput from './components/DebtInput';
 import LumpSumInput from './components/LumpSumInput';
 import AdSlot from './components/AdSlot';
+import SiteHeader from './components/SiteHeader';
+import SiteFooter from './components/SiteFooter';
 import PaymentScheduleTable from './components/PaymentScheduleTable';
 import { calculatePayoffSchedule } from './utils/calculations';
 import { saveToLocalStorage, loadFromLocalStorage, clearLocalStorage } from './utils/storage';
@@ -343,7 +345,9 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#e3f2fd] p-5">
+    <div className="min-h-screen flex flex-col bg-[#e3f2fd]">
+      <SiteHeader />
+      <main className="flex-1 p-5 w-full">
       <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-lg">
         <h1 className="text-3xl font-bold text-center text-[#2c3e50] mb-8">Debt Payoff Calculator</h1>
 
@@ -631,6 +635,8 @@ function App() {
 
         <AdSlot slot="bottom" />
       </div>
+      </main>
+      <SiteFooter />
     </div>
   );
 }
