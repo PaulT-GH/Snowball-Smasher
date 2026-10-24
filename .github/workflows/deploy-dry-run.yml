@@ -1,0 +1,32 @@
+name: FTP dry run (temporary)
+
+on:
+  push:
+    branches: [feature/repayment-pct-loans-plan-start]
+  workflow_dispatch:
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npx vite build
+
+      # dry-run: connects and lists what would change, but uploads and deletes nothing
+      - name: Dry run over FTPS
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          protocol: ftps
+          local-dir: ./dist/
+          dry-run: true
