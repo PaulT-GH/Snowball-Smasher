@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Chart from 'chart.js/auto';
 import DebtInput from './components/DebtInput';
 import LumpSumInput from './components/LumpSumInput';
+import AdSlot from './components/AdSlot';
 import PaymentScheduleTable from './components/PaymentScheduleTable';
 import { calculatePayoffSchedule } from './utils/calculations';
 import { saveToLocalStorage, loadFromLocalStorage, clearLocalStorage } from './utils/storage';
@@ -346,6 +347,8 @@ function App() {
       <div className="max-w-4xl mx-auto bg-white p-8 rounded-lg shadow-lg">
         <h1 className="text-3xl font-bold text-center text-[#2c3e50] mb-8">Debt Payoff Calculator</h1>
 
+        <AdSlot slot="top" />
+
         {/* Settings Section */}
         <div className="mb-6 p-5 border border-[#b0bec5] rounded-lg bg-[#f8f9fa]">
           <h2 className="text-xl font-semibold text-[#2c3e50] mb-4">Settings</h2>
@@ -595,6 +598,8 @@ function App() {
           </button>
         </div>
 
+        <AdSlot slot="middle" />
+
         {/* Results Section */}
         {showResults && (
           <div className="p-5 border border-[#b0bec5] rounded-lg bg-[#f8f9fa]">
@@ -623,6 +628,8 @@ function App() {
             </div>
           </div>
         )}
+
+        <AdSlot slot="bottom" />
       </div>
     </div>
   );
