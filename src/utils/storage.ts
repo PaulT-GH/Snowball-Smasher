@@ -3,6 +3,8 @@ import { Debt, LumpSum } from '../types';
 export interface SavedData {
   selectedCurrency: string;
   payoffStrategy: string;
+  planStartMonth?: number;
+  planStartYear?: number;
   numCreditCards: number;
   debts: Debt[];
   lumpSums: LumpSum[];

@@ -1,12 +1,37 @@
 import { Debt, LumpSum, PaymentScheduleEntry, ChartData } from '../types';
 
+export const isLoan = (debt: Debt) => debt.id.startsWith('unsecured-');
+
+// Monthly rate that makes `payment` clear `balance` in exactly `term` payments (bisection).
+function impliedMonthlyRate(balance: number, payment: number, term: number): number {
+  if (payment * term <= balance) return 0;
+  let low = 0;
+  let high = 1;
+  for (let i = 0; i < 100; i++) {
+    const mid = (low + high) / 2;
+    const presentValue = payment * (1 - Math.pow(1 + mid, -term)) / mid;
+    if (presentValue > balance) low = mid; else high = mid;
+  }
+  return (low + high) / 2;
+}
+
+// What a debt is due to pay this month, before any extra payments are added on top.
+function scheduledPayment(debt: Debt): number {
+  if (!isLoan(debt) && debt.repayMode === 'pct') {
+    return Math.max(debt.repayFloor, debt.balance * debt.repayPct / 100);
+  }
+  return debt.minPayment;
+}
+
 export function calculatePayoffSchedule(
   debts: Debt[],
   strategy: string,
   extraMonthlyPayment: number,
   bonusAmount: number,
   bonusMonth: number,
-  lumpSums: LumpSum[]
+  lumpSums: LumpSum[],
+  startMonth: number,
+  startYear: number
 ): {
   schedule: PaymentScheduleEntry[];
   totalInterest: number;
@@ -14,19 +39,38 @@ export function calculatePayoffSchedule(
   chartData: ChartData;
 } {
   // Create deep copy of debts to avoid mutating original
-  const workingDebts = debts.map(debt => ({ ...debt }));
-  
-  // Sort debts based on strategy
+  const allDebts = debts.map(debt => {
+    const copy = { ...debt };
+    if (isLoan(copy) && copy.apr <= 0 && copy.term > 0) {
+      // APR not known: work it out from the balance, payment and term
+      const rate = impliedMonthlyRate(copy.balance, copy.minPayment, copy.term);
+      copy.apr = rate * 12 * 100;
+      copy.monthlyInterestRate = rate;
+    } else {
+      copy.monthlyInterestRate = copy.apr / 12 / 100;
+    }
+    return copy;
+  });
+
+  // Cards are ordered by the selected strategy
+  const cards = allDebts.filter(d => !isLoan(d));
+  const loans = allDebts.filter(d => isLoan(d));
   if (strategy === 'snowball') {
-    workingDebts.sort((a, b) => a.balance - b.balance);
+    cards.sort((a, b) => a.balance - b.balance);
   } else if (strategy === 'avalanche') {
-    workingDebts.sort((a, b) => {
+    cards.sort((a, b) => {
       if (b.apr === a.apr) {
         return a.balance - b.balance;
       }
       return b.apr - a.apr;
     });
   }
+  // Each loan goes ahead of any card with a lower APR, and behind cards with an equal or higher APR
+  loans.sort((a, b) => b.apr - a.apr).forEach(loan => {
+    const idx = cards.findIndex(c => c.apr < loan.apr);
+    if (idx === -1) cards.push(loan); else cards.splice(idx, 0, loan);
+  });
+  const workingDebts = cards;
 
   const schedule: PaymentScheduleEntry[] = [];
   const chartData: ChartData = {
@@ -41,20 +85,6 @@ export function calculatePayoffSchedule(
     }]
   };
 
-  // Calculate starting month and year (next full month after current)
-  const now = new Date();
-  const currentMonth = now.getMonth() + 1; // getMonth() returns 0-11, we need 1-12
-  const currentYear = now.getFullYear();
-  
-  let startingMonth = currentMonth + 1;
-  let startingYear = currentYear;
-  
-  // Handle year rollover
-  if (startingMonth > 12) {
-    startingMonth = 1;
-    startingYear = currentYear + 1;
-  }
-
   let currentMonthCount = 0;
   let totalInterestPaidGlobal = 0;
   let paymentPool = extraMonthlyPayment;
@@ -64,8 +94,8 @@ export function calculatePayoffSchedule(
     
     // Calculate the actual calendar month and year
     const monthsFromStart = currentMonthCount - 1;
-    const monthForCalendar = ((startingMonth - 1 + monthsFromStart) % 12) + 1;
-    const yearForCalendar = startingYear + Math.floor((startingMonth - 1 + monthsFromStart) / 12);
+    const monthForCalendar = ((startMonth - 1 + monthsFromStart) % 12) + 1;
+    const yearForCalendar = startYear + Math.floor((startMonth - 1 + monthsFromStart) / 12);
 
     chartData.labels.push(
       `${new Date(0, monthForCalendar - 1).toLocaleString('default', { month: 'short' })} ${yearForCalendar}`
@@ -77,7 +107,7 @@ export function calculatePayoffSchedule(
     }
     
     lumpSums.forEach(ls => {
-      if (ls.month === monthForCalendar) {
+      if (ls.month === monthForCalendar && ls.year === yearForCalendar) {
         monthSpecificExtraPayment += ls.amount;
       }
     });
@@ -85,9 +115,9 @@ export function calculatePayoffSchedule(
     // Accrue interest
     workingDebts.forEach(debt => {
       if (!debt.paidOff) {
-        const interestThisMonth = debt.balance * debt.monthlyInterestRate;
-        debt.balance += interestThisMonth;
-        totalInterestPaidGlobal += interestThisMonth;
+        debt.interestThisMonth = debt.balance * debt.monthlyInterestRate;
+        debt.balance += debt.interestThisMonth;
+        totalInterestPaidGlobal += debt.interestThisMonth;
       }
     });
 
@@ -99,39 +129,20 @@ export function calculatePayoffSchedule(
       const debt = workingDebts[i];
       if (debt.paidOff) continue;
 
+      const scheduled = scheduledPayment(debt);
       let paymentAmount = 0;
       
       if (i === targetDebtIndex) {
-        paymentAmount = Math.min(debt.balance, debt.minPayment + availableForTargetDebt);
+        paymentAmount = Math.min(debt.balance, scheduled + availableForTargetDebt);
+        availableForTargetDebt = Math.max(0, availableForTargetDebt - Math.max(0, paymentAmount - scheduled));
       } else {
-        paymentAmount = Math.min(debt.balance, debt.minPayment);
+        paymentAmount = Math.min(debt.balance, scheduled);
       }
 
-      let interestPaidThisPayment: number;
-      let principalPaidThisPayment: number;
-
-      const balanceBeforePayment = debt.balance;
+      // Interest is cleared first, the rest of the payment reduces principal
+      const interestPaidThisPayment = Math.min(paymentAmount, debt.interestThisMonth ?? 0);
+      const principalPaidThisPayment = paymentAmount - interestPaidThisPayment;
       debt.balance -= paymentAmount;
-
-      if (debt.balance <= 0.005) {
-        debt.balance = 0;
-        interestPaidThisPayment = balanceBeforePayment * debt.monthlyInterestRate;
-        if (paymentAmount < interestPaidThisPayment) {
-          interestPaidThisPayment = paymentAmount;
-        }
-        principalPaidThisPayment = paymentAmount - interestPaidThisPayment;
-      } else {
-        interestPaidThisPayment = balanceBeforePayment * debt.monthlyInterestRate;
-        if (paymentAmount < interestPaidThisPayment) {
-          interestPaidThisPayment = paymentAmount;
-          principalPaidThisPayment = 0;
-        } else {
-          principalPaidThisPayment = paymentAmount - interestPaidThisPayment;
-        }
-      }
-
-      principalPaidThisPayment = Math.max(0, principalPaidThisPayment);
-      interestPaidThisPayment = Math.max(0, interestPaidThisPayment);
 
       schedule.push({
         month: monthForCalendar,
@@ -147,7 +158,7 @@ export function calculatePayoffSchedule(
       if (debt.balance <= 0.005) {
         debt.balance = 0;
         if (!debt.paidOff) {
-          paymentPool += debt.minPayment;
+          paymentPool += scheduled;
           debt.paidOff = true;
           targetDebtIndex = workingDebts.findIndex(d => !d.paidOff);
         }
