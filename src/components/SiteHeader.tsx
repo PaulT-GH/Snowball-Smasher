@@ -15,8 +15,11 @@ const SiteHeader = () => {
   return (
     <header className="sticky top-0 z-50 bg-white shadow-sm">
       <div className="max-w-[1200px] mx-auto px-4 py-4 flex items-center justify-between">
-        <a href="/">
-          <img src="/images/logo.png" alt="Snowball Smasher" className="h-10" />
+        <a href="/" className="flex items-center gap-[10px] no-underline">
+          <img src="/favicon.svg" alt="" width={40} height={40} className="h-10 w-10" />
+          <span className="font-bold text-[1.2rem] text-[#2c3e50] whitespace-nowrap" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+            Snowball Smasher
+          </span>
         </a>
 
         <button

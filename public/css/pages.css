@@ -139,3 +139,30 @@
     margin-top: var(--spacing-xl);
     font-weight: 600;
 }
+
+/* Header logo: icon plus wordmark */
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+}
+
+.logo .logo-link img {
+    height: 40px;
+    width: 40px;
+}
+
+.logo-text {
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 700;
+    font-size: 1.2rem;
+    color: var(--momentum-blue);
+    white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+    .logo-text {
+        font-size: 1rem;
+    }
+}
