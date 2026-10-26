@@ -87,7 +87,9 @@ export function calculatePayoffSchedule(
 
   let currentMonthCount = 0;
   let totalInterestPaidGlobal = 0;
-  let paymentPool = extraMonthlyPayment;
+  // The first month's combined payments (plus any extra monthly payment) are the monthly budget.
+  // It stays the same every month, so money freed as balances fall or debts clear rolls onto the target debt.
+  let monthlyBudget = 0;
 
   while (workingDebts.some(debt => !debt.paidOff)) {
     currentMonthCount++;
@@ -101,17 +103,6 @@ export function calculatePayoffSchedule(
       `${new Date(0, monthForCalendar - 1).toLocaleString('default', { month: 'short' })} ${yearForCalendar}`
     );
 
-    let monthSpecificExtraPayment = paymentPool;
-    if (bonusAmount > 0 && bonusMonth === monthForCalendar) {
-      monthSpecificExtraPayment += bonusAmount;
-    }
-    
-    lumpSums.forEach(ls => {
-      if (ls.month === monthForCalendar && ls.year === yearForCalendar) {
-        monthSpecificExtraPayment += ls.amount;
-      }
-    });
-
     // Accrue interest
     workingDebts.forEach(debt => {
       if (!debt.paidOff) {
@@ -121,23 +112,40 @@ export function calculatePayoffSchedule(
       }
     });
 
-    // Make payments
-    let availableForTargetDebt = monthSpecificExtraPayment;
-    let targetDebtIndex = workingDebts.findIndex(d => !d.paidOff);
+    const activeDebts = workingDebts.filter(d => !d.paidOff);
 
-    for (let i = 0; i < workingDebts.length; i++) {
-      const debt = workingDebts[i];
-      if (debt.paidOff) continue;
+    if (currentMonthCount === 1) {
+      monthlyBudget = activeDebts.reduce((sum, d) => sum + scheduledPayment(d), 0) + extraMonthlyPayment;
+    }
 
-      const scheduled = scheduledPayment(debt);
-      let paymentAmount = 0;
-      
-      if (i === targetDebtIndex) {
-        paymentAmount = Math.min(debt.balance, scheduled + availableForTargetDebt);
-        availableForTargetDebt = Math.max(0, availableForTargetDebt - Math.max(0, paymentAmount - scheduled));
-      } else {
-        paymentAmount = Math.min(debt.balance, scheduled);
+    let available = monthlyBudget;
+    if (bonusAmount > 0 && bonusMonth === monthForCalendar) {
+      available += bonusAmount;
+    }
+    lumpSums.forEach(ls => {
+      if (ls.month === monthForCalendar && ls.year === yearForCalendar) {
+        available += ls.amount;
       }
+    });
+
+    // Every debt gets its scheduled payment first (never more than it owes)
+    const payments = new Map<Debt, number>();
+    activeDebts.forEach(debt => {
+      const payment = Math.min(debt.balance, scheduledPayment(debt));
+      payments.set(debt, payment);
+      available -= payment;
+    });
+
+    // Everything left goes to the first debt in priority order, then the next once it is cleared
+    for (const debt of activeDebts) {
+      if (available <= 0) break;
+      const extra = Math.min(available, debt.balance - (payments.get(debt) ?? 0));
+      payments.set(debt, (payments.get(debt) ?? 0) + extra);
+      available -= extra;
+    }
+
+    for (const debt of activeDebts) {
+      const paymentAmount = payments.get(debt) ?? 0;
 
       // Interest is cleared first, the rest of the payment reduces principal
       const interestPaidThisPayment = Math.min(paymentAmount, debt.interestThisMonth ?? 0);
@@ -157,11 +165,7 @@ export function calculatePayoffSchedule(
 
       if (debt.balance <= 0.005) {
         debt.balance = 0;
-        if (!debt.paidOff) {
-          paymentPool += scheduled;
-          debt.paidOff = true;
-          targetDebtIndex = workingDebts.findIndex(d => !d.paidOff);
-        }
+        debt.paidOff = true;
       }
     }
 
