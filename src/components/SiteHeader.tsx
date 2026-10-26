@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
 const navLinks = [
-  { label: 'Calculator', href: '/', active: true },
+  { label: 'Home', href: '/', active: false },
+  { label: 'Calculator', href: '/calculator/', active: true },
   { label: 'How It Works', href: '/pages/how-it-works.html', active: false },
   { label: 'Resources', href: '/pages/resources.html', active: false },
   { label: 'Blog', href: '/pages/blog.html', active: false },

@@ -9,7 +9,8 @@ const SiteFooter = () => (
         <div className="flex-1 min-w-[200px]">
           <h3 className="text-lg font-semibold text-white mb-3">Quick Links</h3>
           <ul className="list-none p-0 m-0">
-            <li className="mb-1"><a href="/" className="text-[#ced4da] hover:text-white">Calculator</a></li>
+            <li className="mb-1"><a href="/" className="text-[#ced4da] hover:text-white">Home</a></li>
+            <li className="mb-1"><a href="/calculator/" className="text-[#ced4da] hover:text-white">Calculator</a></li>
             <li className="mb-1"><a href="/pages/how-it-works.html" className="text-[#ced4da] hover:text-white">How It Works</a></li>
             <li className="mb-1"><a href="/pages/resources.html" className="text-[#ced4da] hover:text-white">Resources</a></li>
             <li className="mb-1"><a href="/pages/blog.html" className="text-[#ced4da] hover:text-white">Blog</a></li>

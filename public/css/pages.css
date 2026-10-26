@@ -110,3 +110,32 @@
     margin-top: var(--spacing-lg);
     font-weight: 600;
 }
+
+/* Home page */
+.home-blog {
+    background-color: var(--snow-blue);
+}
+
+.home-cards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+}
+
+.home-card {
+    flex: 1 1 260px;
+    background-color: white;
+    border: 1px solid var(--light-gray);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-lg);
+}
+
+.home-card h3 {
+    font-size: var(--h3-size);
+}
+
+.home-more {
+    text-align: center;
+    margin-top: var(--spacing-xl);
+    font-weight: 600;
+}
