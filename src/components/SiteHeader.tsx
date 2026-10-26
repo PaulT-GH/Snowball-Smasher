@@ -2,7 +2,10 @@ import { useState } from 'react';
 
 const navLinks = [
   { label: 'Calculator', href: '/', active: true },
-  { label: 'How It Works', href: '/pages/how-it-works.html', active: false }
+  { label: 'How It Works', href: '/pages/how-it-works.html', active: false },
+  { label: 'Resources', href: '/pages/resources.html', active: false },
+  { label: 'Blog', href: '/pages/blog.html', active: false },
+  { label: 'About', href: '/pages/about.html', active: false }
 ];
 
 const SiteHeader = () => {

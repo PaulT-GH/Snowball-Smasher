@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://snowballsmasher.freeyourinnerself.com/sitemap.xml
